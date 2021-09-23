@@ -33,11 +33,41 @@ def update_prev_frames(prev_frames, cur_img, i):
     prev_frames[i%k] = cur_img
     return prev_frames
 
+lower_threshold = (40,40,40)
+higher_threshold = (80, 80, 80)
+
 def threshold(diff):
     # diff = diff.astype('uint8')
     # mask = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
-    mask = cv2.inRange(diff,(40,40,40),(255,255,255))
-    return mask
+    mask_confirm = cv2.inRange(diff, higher_threshold, (255,255,255))
+    mask_unsure = cv2.inRange(diff, lower_threshold, higher_threshold)
+
+    for iter in range(50):
+        for i in range(1, diff.shape[0]-1):
+            for j in range(1, diff.shape[1]-1):
+                if mask_unsure[i, j]:
+                    no_sure_neighbours = 0
+                    if mask_confirm[i-1, j]:
+                        no_sure_neighbours += 1
+                    if mask_confirm[i+1, j]:
+                        no_sure_neighbours += 1
+                    if mask_confirm[i, j+1]:
+                        no_sure_neighbours += 1
+                    if mask_confirm[i, j-1]:
+                        no_sure_neighbours += 1
+
+                    if mask_confirm[i-1, j-1]:
+                        no_sure_neighbours += 1
+                    if mask_confirm[i+1, j-1]:
+                        no_sure_neighbours += 1
+                    if mask_confirm[i+1, j+1]:
+                        no_sure_neighbours += 1
+                    if mask_confirm[i-1, j+1]:
+                        no_sure_neighbours += 1
+                    if no_sure_neighbours>=3:
+                        mask_confirm[i, j] = 1
+                        mask_unsure[i, j] = 0
+    return mask_confirm
 
 k = 50
 
