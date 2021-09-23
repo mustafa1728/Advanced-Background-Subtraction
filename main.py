@@ -34,7 +34,7 @@ def update_prev_frames(prev_frames, cur_img, i):
     return prev_frames
 
 lower_threshold = (40,40,40)
-higher_threshold = (80, 80, 80)
+higher_threshold = (60, 60, 60)
 
 def threshold(diff):
     # diff = diff.astype('uint8')
@@ -64,7 +64,9 @@ def threshold(diff):
                         no_sure_neighbours += 1
                     if mask_confirm[i-1, j+1]:
                         no_sure_neighbours += 1
-                    if no_sure_neighbours>=3:
+
+
+                    if no_sure_neighbours>=1:
                         mask_confirm[i, j] = 1
                         mask_unsure[i, j] = 0
     return mask_confirm
@@ -81,7 +83,7 @@ def baseline_bgs(args):
     #bg_img = cv2.GaussianBlur(bg_img,(5,5),cv2.BORDER_DEFAULT)
 
     prev_frames = [cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(i))) for i in range(eval_frames_lims[0] - k, eval_frames_lims[0])]
-    for i in range(eval_frames_lims[0] , eval_frames_lims[1] + 1):
+    for i in range(eval_frames_lims[0], eval_frames_lims[1] + 1):
         #print( os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)) )
         #cur_img = cv2.GaussianBlur(cur_img,(5,5),cv2.BORDER_DEFAULT)
 
@@ -93,8 +95,23 @@ def baseline_bgs(args):
         diff = cv2.absdiff(bg_img, cur_img)
         mask = threshold(diff)
 
-        cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i),mask)
+        Rcontours, hier_r = cv2.findContours(mask,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
+        r_areas = [cv2.contourArea(c) for c in Rcontours]
+        max_rarea = np.max(r_areas)
+        CntExternalMask = np.zeros(mask.shape[:2], dtype="uint8")
+
+        for c in Rcontours:
+            if(( cv2.contourArea(c) > 20)):
+                cv2.drawContours(CntExternalMask, [c], -1, 1, -1)
+
+        mask = CntExternalMask
+        kernel = np.ones((5,5), np.uint8)  
+        mask = cv2.dilate(mask, kernel, iterations=1)
+        mask = cv2.erode(mask, kernel, iterations=1)
+
+        cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), 255*mask)
         prev_frames = update_prev_frames(prev_frames, cur_img, i)
+        print(i)
 
 
 def illumination_bgs(args):
