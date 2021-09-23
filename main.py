@@ -7,76 +7,64 @@ import cv2
 import argparse
 import numpy as np
 
-#inp path --  /Users/tamajit/Desktop/IIT DELHI/Semester5/Computer Vision/Assignment1/COL780-A1-Data/baseline/input
-
-#output path -- /Users/tamajit/Desktop/IIT DELHI/Semester5/Computer Vision/Assignment1/COL780-A1-Data/baseline/output
-
-#category -- b
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Get mIOU of video sequences')
-    parser.add_argument('-i', '--inp_path', type=str, default='COL780-A1-Data/baseline/input', required=False, \
+    parser.add_argument('-i', '--inp_path', type=str, default='../COL780-A1-Data/baseline/input', required=False, \
                                                         help="Path for the input images folder")
-    parser.add_argument('-o', '--out_path', type=str, default='COL780-A1-Data/baseline/result', required=False, \
+    parser.add_argument('-o', '--out_path', type=str, default='../COL780-A1-Data/baseline/result', required=False, \
                                                         help="Path for the predicted masks folder")
     parser.add_argument('-c', '--category', type=str, default='b', required=False, \
                                                         help="Scene category. One of baseline, illumination, jitter, dynamic scenes, ptz (b/i/j/m/p)")
-    parser.add_argument('-e', '--eval_frames', type=str, default='eval_frames.txt', required=False, \
+    parser.add_argument('-e', '--eval_frames', type=str, default='../COL780-A1-Data/baseline/eval_frames.txt', required=False, \
                                                         help="Path to the eval_frames.txt file")
-    parser.add_argument('-g', '--gt_path', type=str, default='COL780-A1-Data/baseline/groundtruth', required=False, \
+    parser.add_argument('-g', '--gt_path', type=str, default='../COL780-A1-Data/baseline/groundtruth', required=False, \
                                                         help="Path for the ground truth masks folder")                                    
                                             
     args = parser.parse_args()
     return args
 
 
+def get_background(prev_frames):
+    back = np.median(np.asarray(prev_frames), axis = 0)
+    return back
+
+def update_prev_frames(prev_frames, cur_img, i):
+    prev_frames[i%k] = cur_img
+    return prev_frames
+
+def threshold(diff):
+    # diff = diff.astype('uint8')
+    # mask = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
+    mask = cv2.inRange(diff,(40,40,40),(255,255,255))
+    return mask
+
+k = 50
+
 def baseline_bgs(args):
 
-    image1 = cv2.imread(os.path.join(args.inp_path,'in000001.jpg'))
-
-    image2 = cv2.imread(os.path.join(args.inp_path,'in000443.jpg'))
-
-    print(image1.shape)
-    print(image2.shape)
-
-
-
-    gt = cv2.imread(os.path.join(args.gt_path,'gt000001.png'))
-    print(gt.shape)
-
-    height = image1.shape[0]
-
-    bg_img = image1
-    bg_img[:,160:,:] = image2[:,160:,:] 
-
-    #back_ground = []
+    os.makedirs(args.out_path, exist_ok=True) 
+    with open(args.eval_frames) as f:
+        eval_frames_lims = f.read().split(" ")
+    eval_frames_lims = [int(x) for x in eval_frames_lims]
 
     #bg_img = cv2.GaussianBlur(bg_img,(5,5),cv2.BORDER_DEFAULT)
 
-    cv2.imwrite("background_image.png" , bg_img)
-
-    bg_mask = cv2.imread("background_mask.png",0)
-
-    print(bg_mask)
-
-
-    for i in range(470 , 1701):
+    prev_frames = [cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(i))) for i in range(eval_frames_lims[0] - k, eval_frames_lims[0])]
+    for i in range(eval_frames_lims[0] , eval_frames_lims[1] + 1):
         #print( os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)) )
-        cur_img = cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)))
-
         #cur_img = cv2.GaussianBlur(cur_img,(5,5),cv2.BORDER_DEFAULT)
 
-        diff = cv2.absdiff(bg_img, cur_img )
+        cur_img = cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)))
+        bg_img = get_background(prev_frames)
 
-        mask = cv2.inRange(diff,(35,35,35),(255,255,255))
-
-        bg_mask = cv2.imread("background_mask.png",0)/255
-
-
-        mask = mask * bg_mask
+        cur_img = cur_img.astype(float)
+        bg_img = bg_img.astype(float)
+        diff = cv2.absdiff(bg_img, cur_img)
+        mask = threshold(diff)
 
         cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i),mask)
-    pass
+        prev_frames = update_prev_frames(prev_frames, cur_img, i)
 
 
 def illumination_bgs(args):
