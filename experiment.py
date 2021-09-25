@@ -82,8 +82,30 @@ def illumination_bgs(args):
     pass
     
 
+def align(template, image = None):
+    assert image is None or image.shape == template.shape
+    pad = 6
+    if image is None:
+        black_img = np.zeros(template.shape)
+        black_img[pad:-pad, pad:-pad, :] = template[pad:-pad, pad:-pad, :]
+        return black_img
+    min_distance = np.sum(image)**2
+    least_diff_img_center = None
+    for i in range(pad):
+        for j in range(pad):
+            img_center = image[i:-2*pad+i, j:-2*pad+j]
+            dist = np.mean((img_center - template[pad:-pad, pad:-pad, :])**2)
+            if dist<min_distance:
+                least_diff_img_center = img_center
+                min_distance = dist
+    black_img = np.zeros(image.shape)
+    black_img[pad:-pad, pad:-pad, :] = least_diff_img_center
+    return black_img
 
 def jitter_bgs(args):
+    method = 1
+    # method = 2
+
     os.makedirs(args.out_path, exist_ok=True) 
     with open(args.eval_frames) as f:
         eval_frames_lims = f.read().split(" ")
@@ -96,6 +118,7 @@ def jitter_bgs(args):
     number_of_iterations = 5000
     termination_eps = 1e-10
     first_img_gray = None
+    first_img = None
     criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, number_of_iterations,  termination_eps)
 
     for i in range(1, eval_frames_lims[1] + 1):
@@ -104,15 +127,22 @@ def jitter_bgs(args):
 
         cur_img = cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)))
         cur_img = cv2.medianBlur(cur_img, 5)
-
-        if first_img_gray is None:
-            first_img = cur_img
-            first_img_gray = cv2.cvtColor(first_img, cv2.COLOR_BGR2GRAY)
-            continue
         
-        cur_img_gray = cv2.cvtColor(cur_img, cv2.COLOR_BGR2GRAY)
-        (cc, warp_matrix) = cv2.findTransformECC (first_img_gray, cur_img_gray, warp_matrix, warp_mode, criteria, np.ones(first_img_gray.shape).astype("uint8"), gaussFiltSize=3)
-        cur_img = cv2.warpAffine(cur_img, warp_matrix, (cur_img.shape[1], cur_img.shape[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
+        if method == 1:
+            if first_img_gray is None:
+                first_img = cur_img
+                first_img_gray = cv2.cvtColor(first_img, cv2.COLOR_BGR2GRAY)
+                continue
+            cur_img_gray = cv2.cvtColor(cur_img, cv2.COLOR_BGR2GRAY)
+            (cc, warp_matrix) = cv2.findTransformECC (first_img_gray, cur_img_gray, warp_matrix, warp_mode, criteria, np.ones(first_img_gray.shape).astype("uint8"), gaussFiltSize=3)
+            cur_img = cv2.warpAffine(cur_img, warp_matrix, (cur_img.shape[1], cur_img.shape[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
+        elif method == 2:
+            if first_img is None:
+                first_img = align(cur_img)
+                mask = back_model.apply(cur_img)
+                continue
+            cur_img = align(first_img, cur_img)
+
         mask = back_model.apply(cur_img)
         # _, mask = cv2.threshold(mask, 0.5, 1, cv2.THRESH_BINARY)
 
@@ -136,11 +166,13 @@ def jitter_bgs(args):
         mask = CntExternalMask
 
         kernel = np.ones((5,5), np.uint8)  
-        mask = cv2.dilate(mask, kernel, iterations=1)
         mask = cv2.erode(mask, kernel, iterations=1)
+        mask = cv2.dilate(mask, kernel, iterations=1)
 
-        cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), 255*mask)
         print(i)
+        cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), 255*mask)
+        # cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), cur_img)
+        
 
     pass
 
