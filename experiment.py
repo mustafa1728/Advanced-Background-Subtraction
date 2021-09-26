@@ -13,7 +13,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Get mIOU of video sequences')
     parser.add_argument('-i', '--inp_path', type=str, default='../COL780-A1-Data/ptz/input', required=False, \
                                                         help="Path for the input images folder")
-    parser.add_argument('-o', '--out_path', type=str, default='../COL780-A1-Data/ptz/result', required=False, \
+    parser.add_argument('-o', '--out_path', type=str, default='../COL780-A1-Data/ptz/result_fast', required=False, \
                                                         help="Path for the predicted masks folder")
     parser.add_argument('-c', '--category', type=str, default='b', required=False, \
                                                         help="Scene category. One of baseline, illumination, jitter, dynamic scenes, ptz (b/i/j/m/p)")
@@ -91,8 +91,8 @@ def align(template, image = None):
         return black_img
     min_distance = np.sum(image)**2
     least_diff_img_center = None
-    for i in range(pad):
-        for j in range(pad):
+    for i in range(2*pad):
+        for j in range(2*pad):
             img_center = image[i:-2*pad+i, j:-2*pad+j]
             dist = np.mean((img_center - template[pad:-pad, pad:-pad, :])**2)
             if dist<min_distance:
@@ -124,7 +124,8 @@ def jitter_bgs(args):
     for i in range(1, eval_frames_lims[1] + 1):
 
         cur_img = cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)))
-        cur_img = cv2.medianBlur(cur_img, 5)
+        # cur_img = cv2.medianBlur(cur_img, 5)
+
         
         if method == 1:
             if first_img_gray is None:
@@ -179,27 +180,38 @@ def ptz_bgs(args):
         eval_frames_lims = f.read().split(" ")
     eval_frames_lims = [int(x) for x in eval_frames_lims]
 
-    back_model = cv2.createBackgroundSubtractorKNN(detectShadows = True)
+    back_model = cv2.createBackgroundSubtractorKNN(detectShadows = True, history = 100)
 
     warp_mode = cv2.MOTION_AFFINE
     warp_matrix = np.eye(2, 3, dtype=np.float32)
-    number_of_iterations = 5000
-    termination_eps = 1e-10
+    number_of_iterations = 1000
+    termination_eps = 1e-6
     first_img_gray = None
+    count = 0
     criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, number_of_iterations,  termination_eps)
 
-    for i in range(1, eval_frames_lims[1] + 1):
-
+    for i in range(eval_frames_lims[0] - 20, eval_frames_lims[1] + 1):
+        count+=1
         cur_img = cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)))
-        cur_img = cv2.medianBlur(cur_img, 5)
+        # cur_img = cv2.medianBlur(cur_img, 5)
+        cur_img = cv2.GaussianBlur(cur_img, (9, 9), cv2.BORDER_DEFAULT)
+        if count>10:
+            back_img = back_model.getBackgroundImage()
+            back_img_gray = cv2.cvtColor(back_img, cv2.COLOR_BGR2GRAY)
+        else:
+            back_img = cur_img
+            back_img_gray = cv2.cvtColor(back_img, cv2.COLOR_BGR2GRAY)
+        # back_img_gray = cv2.cvtColor(back_img, cv2.COLOR_BGR2GRAY)
+        #cur_img = cv2.fastNlMeansDenoisingColored(cur_img, None, 10, 10, 7, 21)
         
         if first_img_gray is None:
             first_img = cur_img
             first_img_gray = cv2.cvtColor(first_img, cv2.COLOR_BGR2GRAY)
             continue
         cur_img_gray = cv2.cvtColor(cur_img, cv2.COLOR_BGR2GRAY)
-        (cc, warp_matrix) = cv2.findTransformECC (first_img_gray, cur_img_gray, warp_matrix, warp_mode, criteria, np.ones(first_img_gray.shape).astype("uint8"), gaussFiltSize=3)
+        (cc, warp_matrix) = cv2.findTransformECC (back_img_gray, cur_img_gray, warp_matrix, warp_mode, criteria, np.ones(first_img_gray.shape).astype("uint8"), gaussFiltSize=3)
         cur_img = cv2.warpAffine(cur_img, warp_matrix, (cur_img.shape[1], cur_img.shape[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
+        # first_img_gray = cur_img_gray
 
         mask = back_model.apply(cur_img)
         # _, mask = cv2.threshold(mask, 0.5, 1, cv2.THRESH_BINARY)
@@ -208,22 +220,20 @@ def ptz_bgs(args):
             continue
 
         Rcontours, hier_r = cv2.findContours(mask,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
-        r_areas = [cv2.contourArea(c) for c in Rcontours]
-        max_rarea = np.max(r_areas)
         CntExternalMask = np.zeros(mask.shape[:2], dtype="uint8")
 
         for c in Rcontours:
-            if(( cv2.contourArea(c) > 50)):
+            if(( cv2.contourArea(c) > 50) and ( cv2.contourArea(c) < 9000)):
                 cv2.drawContours(CntExternalMask, [c], -1, 1, -1)
 
-        mask = CntExternalMask
+        mask = 255*CntExternalMask
 
         kernel = np.ones((5,5), np.uint8)  
         mask = cv2.erode(mask, kernel, iterations=1)
         mask = cv2.dilate(mask, kernel, iterations=1)
 
         print(i)
-        cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), 255*mask)
+        cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), mask)
         # cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), cur_img)
 
 
