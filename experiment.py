@@ -12,15 +12,15 @@ import matplotlib.pyplot as plt
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Get mIOU of video sequences')
-    parser.add_argument('-i', '--inp_path', type=str, default='../COL780-A1-Data/illumination/input', required=False, \
+    parser.add_argument('-i', '--inp_path', type=str, default='../COL780-A1-Data/moving_bg/input', required=False, \
                                                         help="Path for the input images folder")
-    parser.add_argument('-o', '--out_path', type=str, default='../COL780-A1-Data/illumination/result', required=False, \
+    parser.add_argument('-o', '--out_path', type=str, default='../COL780-A1-Data/moving_bg/result', required=False, \
                                                         help="Path for the predicted masks folder")
     parser.add_argument('-c', '--category', type=str, default='b', required=False, \
                                                         help="Scene category. One of baseline, illumination, jitter, dynamic scenes, ptz (b/i/j/m/p)")
-    parser.add_argument('-e', '--eval_frames', type=str, default='../COL780-A1-Data/illumination/eval_frames.txt', required=False, \
+    parser.add_argument('-e', '--eval_frames', type=str, default='../COL780-A1-Data/moving_bg/eval_frames.txt', required=False, \
                                                         help="Path to the eval_frames.txt file")
-    parser.add_argument('-g', '--gt_path', type=str, default='../COL780-A1-Data/illumination/groundtruth', required=False, \
+    parser.add_argument('-g', '--gt_path', type=str, default='../COL780-A1-Data/moving_bg/groundtruth', required=False, \
                                                         help="Path for the ground truth masks folder")                                    
                                             
     args = parser.parse_args()
@@ -57,22 +57,19 @@ def baseline_bgs(args):
             continue
 
         Rcontours, hier_r = cv2.findContours(mask,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
-        r_areas = [cv2.contourArea(c) for c in Rcontours]
-        max_rarea = np.max(r_areas)
         CntExternalMask = np.zeros(mask.shape[:2], dtype="uint8")
 
         for c in Rcontours:
             if(( cv2.contourArea(c) > 50)):
                 cv2.drawContours(CntExternalMask, [c], -1, 1, -1)
 
-        mask = CntExternalMask
+        mask = 255*CntExternalMask
 
         kernel = np.ones((5,5), np.uint8)  
         mask = cv2.dilate(mask, kernel, iterations=1)
         mask = cv2.erode(mask, kernel, iterations=1)
 
-        cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), 255*mask)
-        print(i)
+        cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), mask)
 
     end = timeit.timeit()
     print(end - start)
@@ -152,7 +149,7 @@ def illumination_bgs(args):
     plt.xlabel("Image number")
     plt.ylabel("Average intensity of image")
     plt.legend()
-    plt.savefig("intensity_variation.png", dpi=300)
+    # plt.savefig("intensity_variation.png", dpi=300)
 
 def align(template, image = None):
     assert image is None or image.shape == template.shape
@@ -221,28 +218,73 @@ def jitter_bgs(args):
             continue
 
         Rcontours, hier_r = cv2.findContours(mask,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
-        r_areas = [cv2.contourArea(c) for c in Rcontours]
-        max_rarea = np.max(r_areas)
         CntExternalMask = np.zeros(mask.shape[:2], dtype="uint8")
 
         for c in Rcontours:
             if(( cv2.contourArea(c) > 50)):
                 cv2.drawContours(CntExternalMask, [c], -1, 1, -1)
 
-        mask = CntExternalMask
+        mask = 255*CntExternalMask
 
         kernel = np.ones((5,5), np.uint8)  
         mask = cv2.erode(mask, kernel, iterations=1)
         mask = cv2.dilate(mask, kernel, iterations=1)
 
-        print(i)
-        cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), 255*mask)
+        cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), mask)
         # cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), cur_img)
-
+        print(i)
 
 def dynamic_bgs(args):
-    #TODO complete this function
-    pass
+    os.makedirs(args.out_path, exist_ok=True) 
+    with open(args.eval_frames) as f:
+        eval_frames_lims = f.read().split(" ")
+    eval_frames_lims = [int(x) for x in eval_frames_lims]
+
+
+    back_model = cv2.createBackgroundSubtractorKNN(dist2Threshold = 1350,  history=500)
+
+    for i in range(1, eval_frames_lims[1] + 1):
+        #print( os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)) )
+        #cur_img = cv2.GaussianBlur(cur_img,(5,5),cv2.BORDER_DEFAULT)
+
+        cur_img = cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)))
+        # cur_img = cv2.GaussianBlur(cur_img,(5,5),cv2.BORDER_DEFAULT)
+        cur_img = 1.5*cur_img
+        cur_img[cur_img > 255] = 255
+        cur_img = cur_img.astype("uint8")
+        cur_img = cv2.pyrMeanShiftFiltering(cur_img, 15, 30)
+        # cur_img = cv2.medianBlur(cur_img, 5)
+        # cur_img = quantimage(cur_img, 12)
+        mask = back_model.apply(cur_img)
+
+        # _, mask = cv2.threshold(mask, 0.5, 1, cv2.THRESH_BINARY)
+
+
+        # print(np.max(mask), np.min(mask))
+        # print(mask)
+        # print(mask.shape)
+
+        # print(i)
+        if i<eval_frames_lims[0]:
+            continue
+
+        Rcontours, hier_r = cv2.findContours(mask,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
+        CntExternalMask = np.zeros(mask.shape[:2], dtype="uint8")
+
+        for c in Rcontours:
+            if(( cv2.contourArea(c) > 35)):
+                cv2.drawContours(CntExternalMask, [c], -1, 1, -1)
+
+        mask = 255*CntExternalMask
+
+        kernel = np.ones((5,5), np.uint8)  
+        mask = cv2.dilate(mask, kernel, iterations=1)
+        mask = cv2.erode(mask, kernel, iterations=2)
+
+        os.makedirs("../COL780-A1-Data/moving_bg/processed", exist_ok=True)
+        cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), mask)
+        cv2.imwrite("../COL780-A1-Data/moving_bg/processed/processed{:06d}.png".format(i), cur_img)
+        
 
 
 def ptz_bgs(args):
@@ -311,7 +353,7 @@ def ptz_bgs(args):
 
 
 def main(args):
-    if args.category not in "bijdp":
+    if args.category not in "bijmp":
         raise ValueError("category should be one of b/i/j/m/p - Found: %s"%args.category)
     FUNCTION_MAPPER = {
             "b": baseline_bgs,
