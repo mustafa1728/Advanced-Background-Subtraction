@@ -7,19 +7,20 @@ import cv2
 import argparse
 import numpy as np
 import timeit
+import matplotlib.pyplot as plt
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Get mIOU of video sequences')
-    parser.add_argument('-i', '--inp_path', type=str, default='../COL780-A1-Data/ptz/input', required=False, \
+    parser.add_argument('-i', '--inp_path', type=str, default='../COL780-A1-Data/illumination/input', required=False, \
                                                         help="Path for the input images folder")
-    parser.add_argument('-o', '--out_path', type=str, default='../COL780-A1-Data/ptz/result_fast', required=False, \
+    parser.add_argument('-o', '--out_path', type=str, default='../COL780-A1-Data/illumination/result', required=False, \
                                                         help="Path for the predicted masks folder")
     parser.add_argument('-c', '--category', type=str, default='b', required=False, \
                                                         help="Scene category. One of baseline, illumination, jitter, dynamic scenes, ptz (b/i/j/m/p)")
-    parser.add_argument('-e', '--eval_frames', type=str, default='../COL780-A1-Data/ptz/eval_frames.txt', required=False, \
+    parser.add_argument('-e', '--eval_frames', type=str, default='../COL780-A1-Data/illumination/eval_frames.txt', required=False, \
                                                         help="Path to the eval_frames.txt file")
-    parser.add_argument('-g', '--gt_path', type=str, default='../COL780-A1-Data/ptz/groundtruth', required=False, \
+    parser.add_argument('-g', '--gt_path', type=str, default='../COL780-A1-Data/illumination/groundtruth', required=False, \
                                                         help="Path for the ground truth masks folder")                                    
                                             
     args = parser.parse_args()
@@ -78,9 +79,80 @@ def baseline_bgs(args):
 
 
 def illumination_bgs(args):
-    #TODO complete this function
-    pass
-    
+    os.makedirs(args.out_path, exist_ok=True) 
+    with open(args.eval_frames) as f:
+        eval_frames_lims = f.read().split(" ")
+    eval_frames_lims = [int(x) for x in eval_frames_lims]
+
+    back_model = cv2.createBackgroundSubtractorKNN(dist2Threshold = 2500, history=50)
+
+    target_dims = (320, 240)
+
+    original_means = []
+    hist_means = []
+    images = []
+
+    for i in range(1, eval_frames_lims[1] + 1):
+        
+        #print( os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)) )
+        #cur_img = cv2.GaussianBlur(cur_img,(5,5),cv2.BORDER_DEFAULT)
+
+        cur_img = cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)))
+
+        cur_img_gray = cv2.cvtColor(cur_img, cv2.COLOR_BGR2GRAY)
+        cur_img = cv2.equalizeHist(cur_img_gray)
+        # cur_img = cv2.normalize(cur_img_gray, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+
+        images.append(cur_img)
+
+        original_means.append(np.mean(cur_img_gray))
+        hist_means.append(np.mean(cur_img))
+        # if len(original_means) > 2 and abs(original_means[-1] - original_means[-2])>2:
+        #     print(i, "resetting background!")
+        #     back_model.clear()
+        #     no_imgs = min(20, len(images))
+            # for i in range(no_imgs):
+            #     back_model.apply(images[-no_imgs+i])
+
+        mask = back_model.apply(cur_img)
+
+        # _, mask = cv2.threshold(mask, 0.5, 1, cv2.THRESH_BINARY)
+
+
+        # print(np.max(mask), np.min(mask))
+        # print(mask)
+        # print(mask.shape)
+
+        if i<eval_frames_lims[0]:
+            continue
+
+        Rcontours, hier_r = cv2.findContours(mask,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
+        CntExternalMask = np.zeros(mask.shape[:2], dtype="uint8")
+
+        for c in Rcontours:
+            if(( cv2.contourArea(c) > 10)):
+                cv2.drawContours(CntExternalMask, [c], -1, 1, -1)
+
+        mask = 255*CntExternalMask
+
+        kernel = np.ones((5,5), np.uint8)  
+        mask = cv2.dilate(mask, kernel, iterations=2)
+        mask = cv2.erode(mask, kernel, iterations=1)
+
+        mask = cv2.resize(mask, target_dims)
+
+
+        cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), mask)
+        os.makedirs("../COL780-A1-Data/illumination/hist", exist_ok=True)
+        cv2.imwrite("../COL780-A1-Data/illumination/hist"+'/hist{:06d}.png'.format(i), cur_img)
+        # print(i)
+
+    plt.plot(original_means, label="Original Images")
+    plt.plot(hist_means, label="Histogram Equalised")
+    plt.xlabel("Image number")
+    plt.ylabel("Average intensity of image")
+    plt.legend()
+    plt.savefig("intensity_variation.png", dpi=300)
 
 def align(template, image = None):
     assert image is None or image.shape == template.shape
