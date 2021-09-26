@@ -12,15 +12,15 @@ import matplotlib.pyplot as plt
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Get mIOU of video sequences')
-    parser.add_argument('-i', '--inp_path', type=str, default='../COL780-A1-Data/moving_bg/input', required=False, \
+    parser.add_argument('-i', '--inp_path', type=str, default='../COL780-A1-Data/jitter/input', required=False, \
                                                         help="Path for the input images folder")
-    parser.add_argument('-o', '--out_path', type=str, default='../COL780-A1-Data/moving_bg/result', required=False, \
+    parser.add_argument('-o', '--out_path', type=str, default='../COL780-A1-Data/jitter/result', required=False, \
                                                         help="Path for the predicted masks folder")
     parser.add_argument('-c', '--category', type=str, default='b', required=False, \
                                                         help="Scene category. One of baseline, illumination, jitter, dynamic scenes, ptz (b/i/j/m/p)")
-    parser.add_argument('-e', '--eval_frames', type=str, default='../COL780-A1-Data/moving_bg/eval_frames.txt', required=False, \
+    parser.add_argument('-e', '--eval_frames', type=str, default='../COL780-A1-Data/jitter/eval_frames.txt', required=False, \
                                                         help="Path to the eval_frames.txt file")
-    parser.add_argument('-g', '--gt_path', type=str, default='../COL780-A1-Data/moving_bg/groundtruth', required=False, \
+    parser.add_argument('-g', '--gt_path', type=str, default='../COL780-A1-Data/jitter/groundtruth', required=False, \
                                                         help="Path for the ground truth masks folder")                                    
                                             
     args = parser.parse_args()
@@ -189,20 +189,24 @@ def jitter_bgs(args):
     first_img_gray = None
     first_img = None
     criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, number_of_iterations,  termination_eps)
+    count = 0
 
     for i in range(1, eval_frames_lims[1] + 1):
+        count+=1
 
         cur_img = cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)))
         # cur_img = cv2.medianBlur(cur_img, 5)
 
         
         if method == 1:
-            if first_img_gray is None:
-                first_img = cur_img
-                first_img_gray = cv2.cvtColor(first_img, cv2.COLOR_BGR2GRAY)
-                continue
+            if count>10:
+                back_img = back_model.getBackgroundImage()
+                back_img_gray = cv2.cvtColor(back_img, cv2.COLOR_BGR2GRAY)
+            else:
+                back_img = cur_img
+                back_img_gray = cv2.cvtColor(back_img, cv2.COLOR_BGR2GRAY)
             cur_img_gray = cv2.cvtColor(cur_img, cv2.COLOR_BGR2GRAY)
-            (cc, warp_matrix) = cv2.findTransformECC (first_img_gray, cur_img_gray, warp_matrix, warp_mode, criteria, np.ones(first_img_gray.shape).astype("uint8"), gaussFiltSize=3)
+            (cc, warp_matrix) = cv2.findTransformECC (back_img_gray, cur_img_gray, warp_matrix, warp_mode, criteria, np.ones(back_img_gray.shape).astype("uint8"), gaussFiltSize=3)
             cur_img = cv2.warpAffine(cur_img, warp_matrix, (cur_img.shape[1], cur_img.shape[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
         elif method == 2:
             if first_img is None:
