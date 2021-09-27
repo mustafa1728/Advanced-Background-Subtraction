@@ -200,7 +200,7 @@ def jitter_bgs(args):
         eval_frames_lims = f.read().split(" ")
     eval_frames_lims = [int(x) for x in eval_frames_lims]
 
-    back_model = cv2.createBackgroundSubtractorKNN(detectShadows = True)
+    back_model = cv2.createBackgroundSubtractorKNN(dist2Threshold= 300.00 , history = 1000 , detectShadows = True)
 
     warp_mode = cv2.MOTION_TRANSLATION
     warp_matrix = np.eye(2, 3, dtype=np.float32)
@@ -215,6 +215,16 @@ def jitter_bgs(args):
         count+=1
 
         cur_img = cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)))
+
+        # kernel = np.array([[-1, -1, -1],
+        #                 [-1, 9,-1],
+        #                 [-1, -1, -1]])
+        # cur_img = cv2.filter2D(src=cur_img, ddepth=-1, kernel=kernel)
+
+        # smoothed = cv2.GaussianBlur(cur_img, (9, 9), 10)
+        # cur_img = cv2.addWeighted(cur_img, 1.5, smoothed, -0.5, 0)
+        # os.makedirs("../COL780-A1-Data/jitter/processed", exist_ok=True)
+        # cv2.imwrite("../COL780-A1-Data/jitter/processed/processed{:06d}.png".format(i), cur_img)
         # cur_img = cv2.medianBlur(cur_img, 5)
 
         
@@ -236,6 +246,8 @@ def jitter_bgs(args):
             cur_img = align(first_img, cur_img)
 
         mask = back_model.apply(cur_img)
+
+
         # _, mask = cv2.threshold(mask, 0.5, 1, cv2.THRESH_BINARY)
         print(i)
 
@@ -252,19 +264,22 @@ def jitter_bgs(args):
         CntExternalMask = np.zeros(mask.shape[:2], dtype="uint8")
 
         for c in Rcontours:
-            if(( cv2.contourArea(c) > 50)):
+            if(( cv2.contourArea(c) > 100)):
                 cv2.drawContours(CntExternalMask, [c], -1, 1, -1)
 
         mask = 255*CntExternalMask
 
         # kernel = np.ones((5,5), np.uint8)  
         mask = cv2.erode(mask, erode_kernel , iterations=1)
-        mask = cv2.dilate(mask, dilate_kernel, iterations=1)
+        # mask = cv2.dilate(mask, dilate_kernel, iterations=1)
+
+        if method == 1:
+            mask = cv2.warpAffine(mask, warp_matrix, (mask.shape[1], mask.shape[0]), flags=cv2.INTER_LINEAR)
 
         cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), mask)
         # cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), cur_img)
         # print(i)
-# 507 539 574 599 604 714 947 1015 1098 
+
 def dynamic_bgs(args):
     os.makedirs(args.out_path, exist_ok=True) 
     with open(args.eval_frames) as f:
