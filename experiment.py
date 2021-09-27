@@ -6,8 +6,9 @@ import os
 import cv2
 import argparse
 import numpy as np
-import timeit
 import matplotlib.pyplot as plt
+
+
 
 
 FILE = 'jitter'
@@ -21,12 +22,15 @@ def parse_args():
     parser.add_argument('-c', '--category', type=str, default='b', required=False, \
                                                         help="Scene category. One of baseline, illumination, jitter, dynamic scenes, ptz (b/i/j/m/p)")
     parser.add_argument('-e', '--eval_frames', type=str, default='../COL780-A1-Data/'+FILE+'/eval_frames.txt', required=False, \
-                                                        help="Path to the eval_frames.txt file")
-    parser.add_argument('-g', '--gt_path', type=str, default='../COL780-A1-Data/'+FILE+'/groundtruth', required=False, \
-                                                        help="Path for the ground truth masks folder")                                    
+                                                        help="Path to the eval_frames.txt file")                               
                                             
     args = parser.parse_args()
     return args
+
+verbose = False
+erode_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))  
+normal_kernel = np.ones((5, 5), np.uint8)
 
 def baseline_bgs(args):
 
@@ -35,60 +39,32 @@ def baseline_bgs(args):
         eval_frames_lims = f.read().split(" ")
     eval_frames_lims = [int(x) for x in eval_frames_lims]
 
-    start = timeit.timeit()
-
     back_model = cv2.createBackgroundSubtractorKNN(	history = 850 , dist2Threshold = 450.0 , detectShadows = True)
 
     for i in range(1, eval_frames_lims[1] + 1):
-    # for i in range(1, 3):
-        #print( os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)) )
-        #cur_img = cv2.GaussianBlur(cur_img,(5,5),cv2.BORDER_DEFAULT)
+        if verbose:
+            print(i)
 
         cur_img = cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)))
         cur_img = cv2.medianBlur(cur_img, 5)
         mask = back_model.apply(cur_img)
-        #print(mask)
-        # _, mask = cv2.threshold(mask, 100, 255, cv2.THRESH_BINARY)
-
-        # _, mask = cv2.threshold(mask, 0.5, 1, cv2.THRESH_BINARY)
-
-
-        # print(np.max(mask), np.min(mask))
-        # print(mask)
-        # print(mask.shape)
-
-        print(i)
-
+        
         if i<eval_frames_lims[0]:
             continue
 
-        erode_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        # kernel = np.ones((5,5), np.uint8)
         mask = cv2.dilate(mask, dilate_kernel , iterations=1)
         mask = cv2.erode(mask, erode_kernel , iterations=2)
 
 
-        Rcontours, hier_r = cv2.findContours(mask,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
+        Rcontours, _ = cv2.findContours(mask,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
         CntExternalMask = np.zeros(mask.shape[:2], dtype="uint8")
-
         for c in Rcontours:
             if(( cv2.contourArea(c) > 3 )):
                 cv2.drawContours(CntExternalMask, [c], -1, 1, -1)
 
         mask = 255*CntExternalMask
 
-        # kernel = np.ones((5,5), np.uint8)
-        # mask = cv2.erode(mask, erode_kernel , iterations=1)
-        # mask = cv2.dilate(mask, dilate_kernel , iterations=1)
-        # mask = cv2.erode(mask, erode_kernel , iterations=1)
-
-
-
         cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), mask)
-
-    end = timeit.timeit()
-    #print(end - start)
 
 
 def illumination_bgs(args):
@@ -104,45 +80,25 @@ def illumination_bgs(args):
 
     original_means = []
     hist_means = []
-    images = []
 
     for i in range(1, eval_frames_lims[1] + 1):
-        
-        #print( os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)) )
-        #cur_img = cv2.GaussianBlur(cur_img,(5,5),cv2.BORDER_DEFAULT)
+        if verbose:
+            print(i)
 
         cur_img = cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)))
 
         cur_img_gray = cv2.cvtColor(cur_img, cv2.COLOR_BGR2GRAY)
         cur_img = cv2.equalizeHist(cur_img_gray)
-        # cur_img = cv2.normalize(cur_img_gray, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-
-        images.append(cur_img)
 
         original_means.append(np.mean(cur_img_gray))
         hist_means.append(np.mean(cur_img))
-        # if len(original_means) > 2 and abs(original_means[-1] - original_means[-2])>2:
-        #     print(i, "resetting background!")
-        #     back_model.clear()
-        #     no_imgs = min(20, len(images))
-            # for i in range(no_imgs):
-            #     back_model.apply(images[-no_imgs+i])
 
         mask = back_model.apply(cur_img)
-
-        # _, mask = cv2.threshold(mask, 0.5, 1, cv2.THRESH_BINARY)
-
-
-        # print(np.max(mask), np.min(mask))
-        # print(mask)
-        # print(mask.shape)
-
-        print(i)
 
         if i<eval_frames_lims[0]:
             continue
 
-        Rcontours, hier_r = cv2.findContours(mask,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
+        Rcontours, _ = cv2.findContours(mask,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
         CntExternalMask = np.zeros(mask.shape[:2], dtype="uint8")
 
         for c in Rcontours:
@@ -151,25 +107,23 @@ def illumination_bgs(args):
 
         mask = 255*CntExternalMask
 
-        # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        kernel = np.ones((5,5), np.uint8)  
-        mask = cv2.dilate(mask, kernel, iterations=2)
-        mask = cv2.erode(mask, kernel, iterations=1)
+        mask = cv2.dilate(mask, dilate_kernel, iterations=2)
+        mask = cv2.erode(mask, erode_kernel, iterations=1)
 
         mask = cv2.resize(mask, target_dims)
 
 
         cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), mask)
-        os.makedirs("../COL780-A1-Data/illumination/hist", exist_ok=True)
-        cv2.imwrite("../COL780-A1-Data/illumination/hist"+'/hist{:06d}.png'.format(i), cur_img)
-        # print(i)
+        save_hist = False
+        if save_hist:
+            os.makedirs("../COL780-A1-Data/illumination/hist", exist_ok=True)
+            cv2.imwrite("../COL780-A1-Data/illumination/hist"+'/hist{:06d}.png'.format(i), cur_img)
 
     plt.plot(original_means, label="Original Images")
     plt.plot(hist_means, label="Histogram Equalised")
     plt.xlabel("Image number")
     plt.ylabel("Average intensity of image")
     plt.legend()
-    # plt.savefig("intensity_variation.png", dpi=300)
 
 def align(template, image = None):
     assert image is None or image.shape == template.shape
@@ -193,7 +147,6 @@ def align(template, image = None):
 
 def jitter_bgs(args):
     method = 1
-    # method = 2
 
     os.makedirs(args.out_path, exist_ok=True) 
     with open(args.eval_frames) as f:
@@ -206,12 +159,13 @@ def jitter_bgs(args):
     warp_matrix = np.eye(2, 3, dtype=np.float32)
     number_of_iterations = 5000
     termination_eps = 1e-10
-    first_img_gray = None
     first_img = None
     criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, number_of_iterations,  termination_eps)
     count = 0
 
     for i in range(1, eval_frames_lims[1] + 1):
+        if verbose:
+            print(i)
         count+=1
 
         cur_img = cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)))
@@ -223,9 +177,6 @@ def jitter_bgs(args):
 
         # smoothed = cv2.GaussianBlur(cur_img, (9, 9), 10)
         # cur_img = cv2.addWeighted(cur_img, 1.5, smoothed, -0.5, 0)
-        # os.makedirs("../COL780-A1-Data/jitter/processed", exist_ok=True)
-        # cv2.imwrite("../COL780-A1-Data/jitter/processed/processed{:06d}.png".format(i), cur_img)
-        # cur_img = cv2.medianBlur(cur_img, 5)
 
         
         if method == 1:
@@ -236,7 +187,7 @@ def jitter_bgs(args):
                 back_img = cur_img
                 back_img_gray = cv2.cvtColor(back_img, cv2.COLOR_BGR2GRAY)
             cur_img_gray = cv2.cvtColor(cur_img, cv2.COLOR_BGR2GRAY)
-            (cc, warp_matrix) = cv2.findTransformECC (back_img_gray, cur_img_gray, warp_matrix, warp_mode, criteria, np.ones(back_img_gray.shape).astype("uint8"), gaussFiltSize=3)
+            (_, warp_matrix) = cv2.findTransformECC (back_img_gray, cur_img_gray, warp_matrix, warp_mode, criteria, np.ones(back_img_gray.shape).astype("uint8"), gaussFiltSize=3)
             cur_img = cv2.warpAffine(cur_img, warp_matrix, (cur_img.shape[1], cur_img.shape[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
         elif method == 2:
             if first_img is None:
@@ -247,20 +198,12 @@ def jitter_bgs(args):
 
         mask = back_model.apply(cur_img)
 
-
-        # _, mask = cv2.threshold(mask, 0.5, 1, cv2.THRESH_BINARY)
-        print(i)
+        
 
         if i<eval_frames_lims[0]:
             continue
 
-        erode_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        # kernel = np.ones((5,5), np.uint8)
-        # mask = cv2.erode(mask, erode_kernel , iterations=1)
-        # mask = cv2.dilate(mask, dilate_kernel , iterations=1)
-
-        Rcontours, hier_r = cv2.findContours(mask,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
+        Rcontours, _ = cv2.findContours(mask,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
         CntExternalMask = np.zeros(mask.shape[:2], dtype="uint8")
 
         for c in Rcontours:
@@ -269,7 +212,6 @@ def jitter_bgs(args):
 
         mask = 255*CntExternalMask
 
-        # kernel = np.ones((5,5), np.uint8)  
         mask = cv2.erode(mask, erode_kernel , iterations=1)
         # mask = cv2.dilate(mask, dilate_kernel, iterations=1)
 
@@ -277,8 +219,6 @@ def jitter_bgs(args):
             mask = cv2.warpAffine(mask, warp_matrix, (mask.shape[1], mask.shape[0]), flags=cv2.INTER_LINEAR)
 
         cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), mask)
-        # cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), cur_img)
-        # print(i)
 
 def dynamic_bgs(args):
     os.makedirs(args.out_path, exist_ok=True) 
@@ -290,9 +230,8 @@ def dynamic_bgs(args):
     back_model = cv2.createBackgroundSubtractorKNN(dist2Threshold = 1000,  history=1000)
 
     for i in range(1, eval_frames_lims[1] + 1):
-        #print( os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)) )
-        #cur_img = cv2.GaussianBlur(cur_img,(5,5),cv2.BORDER_DEFAULT)
-
+        if verbose:
+            print(i)
         cur_img = cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)))
         # cur_img = cv2.GaussianBlur(cur_img,(5,5),cv2.BORDER_DEFAULT)
         cur_img = 1.5*cur_img
@@ -302,19 +241,11 @@ def dynamic_bgs(args):
         # cur_img = cv2.medianBlur(cur_img, 5)
         # cur_img = quantimage(cur_img, 12)
         mask = back_model.apply(cur_img)
-
-        # _, mask = cv2.threshold(mask, 0.5, 1, cv2.THRESH_BINARY)
-
-
-        # print(np.max(mask), np.min(mask))
-        # print(mask)
-        # print(mask.shape)
-
-        print(i)
+        
         if i<eval_frames_lims[0]:
             continue
 
-        Rcontours, hier_r = cv2.findContours(mask,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
+        Rcontours, _ = cv2.findContours(mask,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
         CntExternalMask = np.zeros(mask.shape[:2], dtype="uint8")
 
         for c in Rcontours:
@@ -353,9 +284,10 @@ def ptz_bgs(args):
     criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, number_of_iterations,  termination_eps)
 
     for i in range(eval_frames_lims[0] - 20, eval_frames_lims[1] + 1):
+        if verbose:
+            print(i)
         count+=1
         cur_img = cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)))
-        # cur_img = cv2.medianBlur(cur_img, 5)
         cur_img = cv2.GaussianBlur(cur_img, (9, 9), cv2.BORDER_DEFAULT)
         if count>10:
             back_img = back_model.getBackgroundImage()
@@ -371,26 +303,21 @@ def ptz_bgs(args):
             first_img_gray = cv2.cvtColor(first_img, cv2.COLOR_BGR2GRAY)
             continue
         cur_img_gray = cv2.cvtColor(cur_img, cv2.COLOR_BGR2GRAY)
-        (cc, warp_matrix1) = cv2.findTransformECC (back_img_gray, cur_img_gray, warp_matrix1, warp_mode1, criteria, np.ones(first_img_gray.shape).astype("uint8"), gaussFiltSize=3)
+        (_, warp_matrix1) = cv2.findTransformECC (back_img_gray, cur_img_gray, warp_matrix1, warp_mode1, criteria, np.ones(first_img_gray.shape).astype("uint8"), gaussFiltSize=3)
         cur_img = cv2.warpAffine(cur_img, warp_matrix1, (cur_img.shape[1], cur_img.shape[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
         cur_img_gray = cv2.cvtColor(cur_img, cv2.COLOR_BGR2GRAY)
-        (cc, warp_matrix2) = cv2.findTransformECC (back_img_gray, cur_img_gray, warp_matrix2, warp_mode2, criteria, np.ones(first_img_gray.shape).astype("uint8"), gaussFiltSize=3)
+        (_, warp_matrix2) = cv2.findTransformECC (back_img_gray, cur_img_gray, warp_matrix2, warp_mode2, criteria, np.ones(first_img_gray.shape).astype("uint8"), gaussFiltSize=3)
         cur_img = cv2.warpAffine(cur_img, warp_matrix2, (cur_img.shape[1], cur_img.shape[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
-        # first_img_gray = cur_img_gray
 
         mask = back_model.apply(cur_img)
-        # _, mask = cv2.threshold(mask, 0.5, 1, cv2.THRESH_BINARY)
 
-        erode_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        # kernel = np.ones((5,5), np.uint8)
         mask = cv2.dilate(mask, dilate_kernel , iterations=2)
         mask = cv2.erode(mask, erode_kernel , iterations=2)
 
         if i<eval_frames_lims[0]:
             continue
 
-        Rcontours, hier_r = cv2.findContours(mask,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
+        Rcontours, _ = cv2.findContours(mask,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
         CntExternalMask = np.zeros(mask.shape[:2], dtype="uint8")
 
         for c in Rcontours:
@@ -399,18 +326,10 @@ def ptz_bgs(args):
 
         mask = 255*CntExternalMask
 
-        # erode_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        # dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        # # kernel = np.ones((5,5), np.uint8)
-        # mask = cv2.dilate(mask, dilate_kernel , iterations=1)
-        # mask = cv2.erode(mask, erode_kernel , iterations=1)
-
         mask = cv2.warpAffine(mask, warp_matrix2, (mask.shape[1], mask.shape[0]), flags=cv2.INTER_LINEAR)
         mask = cv2.warpAffine(mask, warp_matrix1, (mask.shape[1], mask.shape[0]), flags=cv2.INTER_LINEAR)
 
-        print(i)
         cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), mask)
-        # cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), cur_img)
 
 
 
