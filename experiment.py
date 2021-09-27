@@ -12,20 +12,19 @@ import matplotlib.pyplot as plt
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Get mIOU of video sequences')
-    parser.add_argument('-i', '--inp_path', type=str, default='../COL780-A1-Data/jitter/input', required=False, \
+    parser.add_argument('-i', '--inp_path', type=str, default='../COL780-A1-Data/illumination/input', required=False, \
                                                         help="Path for the input images folder")
-    parser.add_argument('-o', '--out_path', type=str, default='../COL780-A1-Data/jitter/result', required=False, \
+    parser.add_argument('-o', '--out_path', type=str, default='../COL780-A1-Data/illumination/result', required=False, \
                                                         help="Path for the predicted masks folder")
     parser.add_argument('-c', '--category', type=str, default='b', required=False, \
                                                         help="Scene category. One of baseline, illumination, jitter, dynamic scenes, ptz (b/i/j/m/p)")
-    parser.add_argument('-e', '--eval_frames', type=str, default='../COL780-A1-Data/jitter/eval_frames.txt', required=False, \
+    parser.add_argument('-e', '--eval_frames', type=str, default='../COL780-A1-Data/illumination/eval_frames.txt', required=False, \
                                                         help="Path to the eval_frames.txt file")
-    parser.add_argument('-g', '--gt_path', type=str, default='../COL780-A1-Data/jitter/groundtruth', required=False, \
+    parser.add_argument('-g', '--gt_path', type=str, default='../COL780-A1-Data/illumination/groundtruth', required=False, \
                                                         help="Path for the ground truth masks folder")                                    
                                             
     args = parser.parse_args()
     return args
-
 
 def baseline_bgs(args):
 
@@ -36,15 +35,18 @@ def baseline_bgs(args):
 
     start = timeit.timeit()
 
-    back_model = cv2.createBackgroundSubtractorKNN(detectShadows = True)
+    back_model = cv2.createBackgroundSubtractorKNN(	history = 10000 , dist2Threshold = 600.0 , detectShadows = True)
 
     for i in range(1, eval_frames_lims[1] + 1):
+    # for i in range(1, 3):
         #print( os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)) )
         #cur_img = cv2.GaussianBlur(cur_img,(5,5),cv2.BORDER_DEFAULT)
 
         cur_img = cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)))
         cur_img = cv2.medianBlur(cur_img, 5)
         mask = back_model.apply(cur_img)
+        #print(mask)
+        # _, mask = cv2.threshold(mask, 100, 255, cv2.THRESH_BINARY)
 
         # _, mask = cv2.threshold(mask, 0.5, 1, cv2.THRESH_BINARY)
 
@@ -53,8 +55,14 @@ def baseline_bgs(args):
         # print(mask)
         # print(mask.shape)
 
+        print(i)
+
         if i<eval_frames_lims[0]:
             continue
+
+        # kernel = np.ones((5,5), np.uint8)
+        # mask = cv2.dilate(mask, dilate_kernel , iterations=1)
+        # mask = cv2.erode(mask, erode_kernel , iterations=1)
 
         Rcontours, hier_r = cv2.findContours(mask,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
         CntExternalMask = np.zeros(mask.shape[:2], dtype="uint8")
@@ -65,14 +73,19 @@ def baseline_bgs(args):
 
         mask = 255*CntExternalMask
 
-        kernel = np.ones((5,5), np.uint8)  
-        mask = cv2.dilate(mask, kernel, iterations=1)
-        mask = cv2.erode(mask, kernel, iterations=1)
+        erode_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        # kernel = np.ones((5,5), np.uint8)
+        # mask = cv2.erode(mask, erode_kernel , iterations=1)
+        mask = cv2.dilate(mask, dilate_kernel , iterations=1)
+        mask = cv2.erode(mask, erode_kernel , iterations=1)
+
+
 
         cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), mask)
 
     end = timeit.timeit()
-    print(end - start)
+    #print(end - start)
 
 
 def illumination_bgs(args):
@@ -81,7 +94,7 @@ def illumination_bgs(args):
         eval_frames_lims = f.read().split(" ")
     eval_frames_lims = [int(x) for x in eval_frames_lims]
 
-    back_model = cv2.createBackgroundSubtractorKNN(dist2Threshold = 2500, history=50)
+    back_model = cv2.createBackgroundSubtractorKNN(dist2Threshold = 2700, history=45)
 
     target_dims = (320, 240)
 
@@ -120,6 +133,8 @@ def illumination_bgs(args):
         # print(mask)
         # print(mask.shape)
 
+        print(i)
+
         if i<eval_frames_lims[0]:
             continue
 
@@ -127,11 +142,12 @@ def illumination_bgs(args):
         CntExternalMask = np.zeros(mask.shape[:2], dtype="uint8")
 
         for c in Rcontours:
-            if(( cv2.contourArea(c) > 10)):
+            if(( cv2.contourArea(c) > 3)):
                 cv2.drawContours(CntExternalMask, [c], -1, 1, -1)
 
         mask = 255*CntExternalMask
 
+        # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         kernel = np.ones((5,5), np.uint8)  
         mask = cv2.dilate(mask, kernel, iterations=2)
         mask = cv2.erode(mask, kernel, iterations=1)
@@ -217,6 +233,7 @@ def jitter_bgs(args):
 
         mask = back_model.apply(cur_img)
         # _, mask = cv2.threshold(mask, 0.5, 1, cv2.THRESH_BINARY)
+        print(i)
 
         if i<eval_frames_lims[0]:
             continue
@@ -236,7 +253,7 @@ def jitter_bgs(args):
 
         cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), mask)
         # cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), cur_img)
-        print(i)
+        # print(i)
 
 def dynamic_bgs(args):
     os.makedirs(args.out_path, exist_ok=True) 
@@ -245,7 +262,7 @@ def dynamic_bgs(args):
     eval_frames_lims = [int(x) for x in eval_frames_lims]
 
 
-    back_model = cv2.createBackgroundSubtractorKNN(dist2Threshold = 1350,  history=500)
+    back_model = cv2.createBackgroundSubtractorKNN(dist2Threshold = 1000,  history=1000)
 
     for i in range(1, eval_frames_lims[1] + 1):
         #print( os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)) )
@@ -268,7 +285,7 @@ def dynamic_bgs(args):
         # print(mask)
         # print(mask.shape)
 
-        # print(i)
+        print(i)
         if i<eval_frames_lims[0]:
             continue
 
@@ -276,7 +293,7 @@ def dynamic_bgs(args):
         CntExternalMask = np.zeros(mask.shape[:2], dtype="uint8")
 
         for c in Rcontours:
-            if(( cv2.contourArea(c) > 35)):
+            if(( cv2.contourArea(c) > 25)):
                 cv2.drawContours(CntExternalMask, [c], -1, 1, -1)
 
         mask = 255*CntExternalMask
