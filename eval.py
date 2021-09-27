@@ -3,7 +3,7 @@ import cv2
 import argparse
 import numpy as np
 
-FILE = 'illumination'
+FILE = 'moving_bg'
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Get mIOU of video sequences')

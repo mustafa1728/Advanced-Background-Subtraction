@@ -1,12 +1,8 @@
-""" This is the skeleton code for main.py
-You need to complete the required functions. You may create addition source files and use them by importing here.
-"""
-
+# EBBE implementation  
 import os
 import cv2
 import argparse
 import numpy as np
-import timeit
 import math
 
 
@@ -21,12 +17,11 @@ def parse_args():
     parser.add_argument('-c', '--category', type=str, default='b', required=False, \
                                                         help="Scene category. One of baseline, illumination, jitter, dynamic scenes, ptz (b/i/j/m/p)")
     parser.add_argument('-e', '--eval_frames', type=str, default='../COL780-A1-Data/baseline/eval_frames.txt', required=False, \
-                                                        help="Path to the eval_frames.txt file")
-    parser.add_argument('-g', '--gt_path', type=str, default='../COL780-A1-Data/baseline/groundtruth', required=False, \
-                                                        help="Path for the ground truth masks folder")                                    
+                                                        help="Path to the eval_frames.txt file")                      
                                             
     args = parser.parse_args()
     return args
+
 
 THD = 100
 THmatch = 20 
@@ -39,8 +34,6 @@ def baseline_bgs(args):
         eval_frames_lims = f.read().split(" ")
     eval_frames_lims = [int(x) for x in eval_frames_lims]
 
-    start = timeit.timeit()
-
     back_model = cv2.createBackgroundSubtractorKNN(detectShadows = True)
 
 
@@ -48,18 +41,20 @@ def baseline_bgs(args):
 
     cur_img = cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(1)))
     cur_img = cv2.medianBlur(cur_img, 5)
-    print(cur_img)
-    print(cur_img[1,0,:])
-    print(cur_img.shape)
+    # print(cur_img)
+    # print(cur_img[1,0,:])
+    # print(cur_img.shape)
     
-    #Background Category color obtained 
+    #Background Category color obtained array
     BCCO = np.zeros_like( cur_img , shape = ( cur_img.shape[0] , cur_img.shape[1] ) )
 
+    #To store the set of categoies obtained in each pixel
     S_store = []
-
     
+    #foreground and background pixel colour
     foreground = [255,255,255]
     background = [0,0,0]
+
     for i in range( 240 ):
         Row = []
         for j in range( 320 ):
@@ -72,9 +67,7 @@ def baseline_bgs(args):
             Row.append(RC)
         S_store.append(Row)
     
-    #print(len(S_store[0][0][0]))
-
-    # for i in range(1, eval_frames_lims[1] + 1):
+    #loop over all images
     for fn in range(1, eval_frames_lims[1] + 1):
 
         cur_img = cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(fn)))
@@ -83,6 +76,7 @@ def baseline_bgs(args):
         mask = []
         cnt = 0
         cnt2 = 0
+        #algortihm as stated in the paper
         for i in range( 240 ):
             cur_row = []
             for j in range( 320 ):
@@ -150,10 +144,6 @@ def baseline_bgs(args):
                         P.append(Prob)
                         Entropy -= Prob * math.log2(Prob)
                     
-                    # print(J)
-                    # print(S_store[i][j][J[0][0]][3])
-                    # print(P)
-                    
                     Relevant_samples = min((int)(2**Entropy),len(J))
 
                     A = [False] * (len(J))
@@ -177,8 +167,6 @@ def baseline_bgs(args):
                     else:
                         cur_row.append(foreground)
                 else:
-                    #foreground
-                    #print(math.sqrt(Dmin))
                     S = []
                     S.append(cur_img[i,j,0])
                     S.append(cur_img[i,j,1])
@@ -187,9 +175,6 @@ def baseline_bgs(args):
                     S_store[i][j].append(S)
                     cur_row.append(foreground)
             mask.append(cur_row)
-        # print(fn)
-        # print(cnt)
-        # print(cnt2)
         fmask = cur_img
         for i in range (240) :
             for j in range (320) :
@@ -197,70 +182,23 @@ def baseline_bgs(args):
                 fmask[i,j,1] = mask[i][j][1]
                 fmask[i,j,2] = mask[i][j][2]
         
-        # imgray = cv2.cvtColor(fmask,cv2.COLOR_BGR2GRAY)
-        # #print(imgray)
-        # ret,thresh = cv2.threshold(imgray,254,255,cv2.THRESH_BINARY)
-        # print(thresh)
-        # Rcontours, hier_r = cv2.findContours(thresh,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
-        # r_areas = [cv2.contourArea(c) for c in Rcontours]
-        # # max_rarea = np.max(r_areas)
-        # CntExternalMask = np.zeros(fmask.shape[:2], dtype="uint8")
+        imgray = cv2.cvtColor(fmask,cv2.COLOR_BGR2GRAY)
+        ret,thresh = cv2.threshold(imgray,254,255,cv2.THRESH_BINARY)
+        Rcontours, hier_r = cv2.findContours(thresh,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
+        r_areas = [cv2.contourArea(c) for c in Rcontours]
+        CntExternalMask = np.zeros(fmask.shape[:2], dtype="uint8")
 
-        # for c in Rcontours:
-        #     if(( cv2.contourArea(c) > 0)):
-        #         print(cv2.contourArea(c) )
-        #         cv2.drawContours(CntExternalMask, [c], -1, 1, -1)
+        for c in Rcontours:
+            if(( cv2.contourArea(c) > 0)):
+                cv2.drawContours(CntExternalMask, [c], -1, 1, -1)
 
-        # fmask = CntExternalMask
+        fmask = CntExternalMask
 
         # kernel = np.ones((5,5), np.uint8)  
         # fmask = cv2.dilate(fmask, kernel, iterations=1)
         # fmask = cv2.erode(fmask, kernel, iterations=1)
         cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(fn), fmask)
-        
 
-
-
-    # for i in range(1, eval_frames_lims[1] + 1):
-    #     #print( os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)) )
-    #     #cur_img = cv2.GaussianBlur(cur_img,(5,5),cv2.BORDER_DEFAULT)
-
-    #     cur_img = cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)))
-    #     cur_img = cv2.medianBlur(cur_img, 5)
-    #     mask = back_model.apply(cur_img)
-
-    #     # _, mask = cv2.threshold(mask, 0.5, 1, cv2.THRESH_BINARY)
-
-
-    #     # print(np.max(mask), np.min(mask))
-    #     # print(mask)
-    #     # print(mask.shape)
-
-    #     print(cur_img)
-
-    #     if i<eval_frames_lims[0]:
-    #         continue
-
-    #     Rcontours, hier_r = cv2.findContours(mask,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
-    #     r_areas = [cv2.contourArea(c) for c in Rcontours]
-    #     max_rarea = np.max(r_areas)
-    #     CntExternalMask = np.zeros(mask.shape[:2], dtype="uint8")
-
-    #     for c in Rcontours:
-    #         if(( cv2.contourArea(c) > 50)):
-    #             cv2.drawContours(CntExternalMask, [c], -1, 1, -1)
-
-    #     mask = CntExternalMask
-
-    #     kernel = np.ones((5,5), np.uint8)  
-    #     mask = cv2.dilate(mask, kernel, iterations=1)
-    #     mask = cv2.erode(mask, kernel, iterations=1)
-
-    #     cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), 255*mask)
-    #     print(i)
-
-    end = timeit.timeit()
-    print(end - start)
 
 
 def illumination_bgs(args):

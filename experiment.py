@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 
 
-FILE = 'illumination'
+FILE = 'moving_bg'
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Get mIOU of video sequences')
@@ -27,7 +27,7 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-verbose = False
+verbose = True
 erode_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
 dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))  
 normal_kernel = np.ones((5, 5), np.uint8)
@@ -233,14 +233,13 @@ def dynamic_bgs(args):
         if verbose:
             print(i)
         cur_img = cv2.imread(os.path.join(args.inp_path,'in{:06d}.jpg'.format(i)))
-        # cur_img = cv2.GaussianBlur(cur_img,(5,5),cv2.BORDER_DEFAULT)
         cur_img = 1.5*cur_img
         cur_img[cur_img > 255] = 255
         cur_img = cur_img.astype("uint8")
         cur_img = cv2.pyrMeanShiftFiltering(cur_img, 15, 30)
-        # cur_img = cv2.medianBlur(cur_img, 5)
-        # cur_img = quantimage(cur_img, 12)
         mask = back_model.apply(cur_img)
+
+
         
         if i<eval_frames_lims[0]:
             continue
@@ -258,9 +257,8 @@ def dynamic_bgs(args):
         mask = cv2.dilate(mask, kernel, iterations=1)
         mask = cv2.erode(mask, kernel, iterations=2)
 
-        os.makedirs("../COL780-A1-Data/moving_bg/processed", exist_ok=True)
         cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), mask)
-        cv2.imwrite("../COL780-A1-Data/moving_bg/processed/processed{:06d}.png".format(i), cur_img)
+
         
 
 
@@ -307,7 +305,7 @@ def ptz_bgs(args):
         cur_img = cv2.warpAffine(cur_img, warp_matrix1, (cur_img.shape[1], cur_img.shape[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
         cur_img_gray = cv2.cvtColor(cur_img, cv2.COLOR_BGR2GRAY)
         (_, warp_matrix2) = cv2.findTransformECC (back_img_gray, cur_img_gray, warp_matrix2, warp_mode2, criteria, np.ones(first_img_gray.shape).astype("uint8"), gaussFiltSize=3)
-        cur_img = cv2.warpAffine(cur_img, warp_matrix2, (cur_img.shape[1], cur_img.shape[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
+        # cur_img = cv2.warpAffine(cur_img, warp_matrix2, (cur_img.shape[1], cur_img.shape[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
 
         mask = back_model.apply(cur_img)
 
@@ -326,7 +324,7 @@ def ptz_bgs(args):
 
         mask = 255*CntExternalMask
 
-        mask = cv2.warpAffine(mask, warp_matrix2, (mask.shape[1], mask.shape[0]), flags=cv2.INTER_LINEAR)
+        # mask = cv2.warpAffine(mask, warp_matrix2, (mask.shape[1], mask.shape[0]), flags=cv2.INTER_LINEAR)
         mask = cv2.warpAffine(mask, warp_matrix1, (mask.shape[1], mask.shape[0]), flags=cv2.INTER_LINEAR)
 
         cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), mask)
