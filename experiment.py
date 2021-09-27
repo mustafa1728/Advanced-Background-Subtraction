@@ -340,10 +340,12 @@ def ptz_bgs(args):
         eval_frames_lims = f.read().split(" ")
     eval_frames_lims = [int(x) for x in eval_frames_lims]
 
-    back_model = cv2.createBackgroundSubtractorKNN(detectShadows = True, history = 100)
+    back_model = cv2.createBackgroundSubtractorKNN(detectShadows = False, history = 100, dist2Threshold = 3100)
 
-    warp_mode = cv2.MOTION_AFFINE
-    warp_matrix = np.eye(2, 3, dtype=np.float32)
+    warp_mode1 = cv2.MOTION_EUCLIDEAN
+    warp_mode2 = cv2.MOTION_AFFINE
+    warp_matrix1 = np.eye(2, 3, dtype=np.float32)
+    warp_matrix2 = np.eye(2, 3, dtype=np.float32)
     number_of_iterations = 1000
     termination_eps = 1e-6
     first_img_gray = None
@@ -369,12 +371,21 @@ def ptz_bgs(args):
             first_img_gray = cv2.cvtColor(first_img, cv2.COLOR_BGR2GRAY)
             continue
         cur_img_gray = cv2.cvtColor(cur_img, cv2.COLOR_BGR2GRAY)
-        (cc, warp_matrix) = cv2.findTransformECC (back_img_gray, cur_img_gray, warp_matrix, warp_mode, criteria, np.ones(first_img_gray.shape).astype("uint8"), gaussFiltSize=3)
-        cur_img = cv2.warpAffine(cur_img, warp_matrix, (cur_img.shape[1], cur_img.shape[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
+        (cc, warp_matrix1) = cv2.findTransformECC (back_img_gray, cur_img_gray, warp_matrix1, warp_mode1, criteria, np.ones(first_img_gray.shape).astype("uint8"), gaussFiltSize=3)
+        cur_img = cv2.warpAffine(cur_img, warp_matrix1, (cur_img.shape[1], cur_img.shape[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
+        cur_img_gray = cv2.cvtColor(cur_img, cv2.COLOR_BGR2GRAY)
+        (cc, warp_matrix2) = cv2.findTransformECC (back_img_gray, cur_img_gray, warp_matrix2, warp_mode2, criteria, np.ones(first_img_gray.shape).astype("uint8"), gaussFiltSize=3)
+        cur_img = cv2.warpAffine(cur_img, warp_matrix2, (cur_img.shape[1], cur_img.shape[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
         # first_img_gray = cur_img_gray
 
         mask = back_model.apply(cur_img)
         # _, mask = cv2.threshold(mask, 0.5, 1, cv2.THRESH_BINARY)
+
+        erode_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        # kernel = np.ones((5,5), np.uint8)
+        mask = cv2.dilate(mask, dilate_kernel , iterations=2)
+        mask = cv2.erode(mask, erode_kernel , iterations=2)
 
         if i<eval_frames_lims[0]:
             continue
@@ -388,9 +399,14 @@ def ptz_bgs(args):
 
         mask = 255*CntExternalMask
 
-        kernel = np.ones((5,5), np.uint8)  
-        mask = cv2.erode(mask, kernel, iterations=1)
-        mask = cv2.dilate(mask, kernel, iterations=1)
+        # erode_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        # dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        # # kernel = np.ones((5,5), np.uint8)
+        # mask = cv2.dilate(mask, dilate_kernel , iterations=1)
+        # mask = cv2.erode(mask, erode_kernel , iterations=1)
+
+        mask = cv2.warpAffine(mask, warp_matrix2, (mask.shape[1], mask.shape[0]), flags=cv2.INTER_LINEAR)
+        mask = cv2.warpAffine(mask, warp_matrix1, (mask.shape[1], mask.shape[0]), flags=cv2.INTER_LINEAR)
 
         print(i)
         cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), mask)
