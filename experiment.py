@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 
 
-FILE = 'jitter'
+FILE = 'illumination'
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Get mIOU of video sequences')
@@ -107,8 +107,8 @@ def illumination_bgs(args):
 
         mask = 255*CntExternalMask
 
-        mask = cv2.dilate(mask, dilate_kernel, iterations=2)
-        mask = cv2.erode(mask, erode_kernel, iterations=1)
+        mask = cv2.dilate(mask, normal_kernel, iterations=2)
+        mask = cv2.erode(mask, normal_kernel, iterations=1)
 
         mask = cv2.resize(mask, target_dims)
 

@@ -3,7 +3,7 @@ import cv2
 import argparse
 import numpy as np
 
-FILE = 'jitter'
+FILE = 'illumination'
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Get mIOU of video sequences')
