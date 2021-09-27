@@ -3,12 +3,13 @@ import cv2
 import argparse
 import numpy as np
 
+FILE = 'jitter'
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Get mIOU of video sequences')
-    parser.add_argument('-p', '--pred_path', type=str, default='../COL780-A1-Data/illumination/result', required=False, \
+    parser.add_argument('-p', '--pred_path', type=str, default='../COL780-A1-Data/'+FILE+'/result', required=False, \
                                                         help="Path for the predicted masks folder")
-    parser.add_argument('-g', '--gt_path', type=str, default='../COL780-A1-Data/illumination/groundtruth', required=False, \
+    parser.add_argument('-g', '--gt_path', type=str, default='../COL780-A1-Data/'+FILE+'/groundtruth', required=False, \
                                                         help="Path for the ground truth masks folder")
     args = parser.parse_args()
     return args

@@ -10,17 +10,19 @@ import timeit
 import matplotlib.pyplot as plt
 
 
+FILE = 'jitter'
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Get mIOU of video sequences')
-    parser.add_argument('-i', '--inp_path', type=str, default='../COL780-A1-Data/illumination/input', required=False, \
+    parser.add_argument('-i', '--inp_path', type=str, default='../COL780-A1-Data/'+FILE+'/input', required=False, \
                                                         help="Path for the input images folder")
-    parser.add_argument('-o', '--out_path', type=str, default='../COL780-A1-Data/illumination/result', required=False, \
+    parser.add_argument('-o', '--out_path', type=str, default='../COL780-A1-Data/'+FILE+'/result', required=False, \
                                                         help="Path for the predicted masks folder")
     parser.add_argument('-c', '--category', type=str, default='b', required=False, \
                                                         help="Scene category. One of baseline, illumination, jitter, dynamic scenes, ptz (b/i/j/m/p)")
-    parser.add_argument('-e', '--eval_frames', type=str, default='../COL780-A1-Data/illumination/eval_frames.txt', required=False, \
+    parser.add_argument('-e', '--eval_frames', type=str, default='../COL780-A1-Data/'+FILE+'/eval_frames.txt', required=False, \
                                                         help="Path to the eval_frames.txt file")
-    parser.add_argument('-g', '--gt_path', type=str, default='../COL780-A1-Data/illumination/groundtruth', required=False, \
+    parser.add_argument('-g', '--gt_path', type=str, default='../COL780-A1-Data/'+FILE+'/groundtruth', required=False, \
                                                         help="Path for the ground truth masks folder")                                    
                                             
     args = parser.parse_args()
@@ -35,7 +37,7 @@ def baseline_bgs(args):
 
     start = timeit.timeit()
 
-    back_model = cv2.createBackgroundSubtractorKNN(	history = 10000 , dist2Threshold = 600.0 , detectShadows = True)
+    back_model = cv2.createBackgroundSubtractorKNN(	history = 850 , dist2Threshold = 450.0 , detectShadows = True)
 
     for i in range(1, eval_frames_lims[1] + 1):
     # for i in range(1, 3):
@@ -60,25 +62,26 @@ def baseline_bgs(args):
         if i<eval_frames_lims[0]:
             continue
 
+        erode_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         # kernel = np.ones((5,5), np.uint8)
-        # mask = cv2.dilate(mask, dilate_kernel , iterations=1)
-        # mask = cv2.erode(mask, erode_kernel , iterations=1)
+        mask = cv2.dilate(mask, dilate_kernel , iterations=1)
+        mask = cv2.erode(mask, erode_kernel , iterations=2)
+
 
         Rcontours, hier_r = cv2.findContours(mask,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
         CntExternalMask = np.zeros(mask.shape[:2], dtype="uint8")
 
         for c in Rcontours:
-            if(( cv2.contourArea(c) > 50)):
+            if(( cv2.contourArea(c) > 3 )):
                 cv2.drawContours(CntExternalMask, [c], -1, 1, -1)
 
         mask = 255*CntExternalMask
 
-        erode_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         # kernel = np.ones((5,5), np.uint8)
         # mask = cv2.erode(mask, erode_kernel , iterations=1)
-        mask = cv2.dilate(mask, dilate_kernel , iterations=1)
-        mask = cv2.erode(mask, erode_kernel , iterations=1)
+        # mask = cv2.dilate(mask, dilate_kernel , iterations=1)
+        # mask = cv2.erode(mask, erode_kernel , iterations=1)
 
 
 
@@ -89,6 +92,7 @@ def baseline_bgs(args):
 
 
 def illumination_bgs(args):
+
     os.makedirs(args.out_path, exist_ok=True) 
     with open(args.eval_frames) as f:
         eval_frames_lims = f.read().split(" ")
@@ -238,6 +242,12 @@ def jitter_bgs(args):
         if i<eval_frames_lims[0]:
             continue
 
+        erode_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        # kernel = np.ones((5,5), np.uint8)
+        # mask = cv2.erode(mask, erode_kernel , iterations=1)
+        # mask = cv2.dilate(mask, dilate_kernel , iterations=1)
+
         Rcontours, hier_r = cv2.findContours(mask,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
         CntExternalMask = np.zeros(mask.shape[:2], dtype="uint8")
 
@@ -247,14 +257,14 @@ def jitter_bgs(args):
 
         mask = 255*CntExternalMask
 
-        kernel = np.ones((5,5), np.uint8)  
-        mask = cv2.erode(mask, kernel, iterations=1)
-        mask = cv2.dilate(mask, kernel, iterations=1)
+        # kernel = np.ones((5,5), np.uint8)  
+        mask = cv2.erode(mask, erode_kernel , iterations=1)
+        mask = cv2.dilate(mask, dilate_kernel, iterations=1)
 
         cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), mask)
         # cv2.imwrite(args.out_path+'/gt{:06d}.png'.format(i), cur_img)
         # print(i)
-
+# 507 539 574 599 604 714 947 1015 1098 
 def dynamic_bgs(args):
     os.makedirs(args.out_path, exist_ok=True) 
     with open(args.eval_frames) as f:
