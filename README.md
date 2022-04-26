@@ -2,6 +2,7 @@
 
 Advanced Background Subtraction, part of an assignment for course COL780 2021 taken by Prof. Chetan Arora.
 
+The detailed problem statement can be found [here](./statement.pdf) and the report describing the approach can be found [here](./report.pdf).
 
 A few different datasets were provided with some specific background and scene assumptions. For each of the dataset, methods were devised to effectively handle the specific challenges implied by the assumptions.
 
